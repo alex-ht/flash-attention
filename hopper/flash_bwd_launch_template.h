@@ -391,8 +391,8 @@ template<int Arch, typename T, bool Has_softcap>
 void run_mha_bwd_hdim512(Flash_bwd_params &params, cudaStream_t stream) {
     CAUSAL_LOCAL_SWITCH(params.is_causal, params.is_local, Is_causal, Is_local, [&] {
         if constexpr (Arch >= 90) {
-            // Small tiles to fit in smem for headdim=512 (e.g. Gemma 4 global attention)
-            run_mha_bwd_dispatch<Arch, T, 32, 32, 512, Is_causal, Is_local, Has_softcap, 1, 1, false, true, true, 2, 1, 1, 1, false>(params, stream);
+            // SM90 GMMA requires Tile_M % 64 == 0; small N to fit in smem for headdim=512
+            run_mha_bwd_dispatch<Arch, T, 64, 32, 512, Is_causal, Is_local, Has_softcap, 1, 1, false, true, true, 2, 1, 1, 1, false>(params, stream);
         }
     });
 }
