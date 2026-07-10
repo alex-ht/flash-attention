@@ -123,5 +123,5 @@ esac
 echo "==> Done."
 [[ "$VERBOSE" == 0 ]] && echo "    log: $LOG_FILE"
 echo "    smoke test (H100/H800):"
-echo "      PYTHONPATH=$SCRIPT_DIR pytest 'test_flash_attn.py::test_flash_attn_output[256-256-512-False-False-0.0-False-False-False-gqa-bfloat16]' -x -v"
+echo "      PYTHONPATH=$SCRIPT_DIR pytest 'test_flash_attn.py::test_flash_attn_output[256-256-512-False-False-0.0-False-False-False-gqa-torch.bfloat16]' -x -v"
 echo "    (do not use -k with hyphens; pytest treats '-' as NOT)"
