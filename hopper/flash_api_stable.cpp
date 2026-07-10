@@ -1457,7 +1457,6 @@ std::tuple<Tensor, Tensor, Tensor, Tensor, Tensor> mha_bwd(
     STD_TORCH_CHECK(head_size_v % 8 == 0, "head_size_v should be a multiple of 8");
     int const max_headdim = get_max_headdim();
     STD_TORCH_CHECK(std::max(head_size, head_size_v) <= max_headdim, "FlashAttention forward only supports head dimension at most " + std::to_string(max_headdim));
-    auto dprops = get_device_prop();
     int const arch = dprops->major * 10 + dprops->minor;
     STD_TORCH_CHECK(std::max(head_size, head_size_v) <= 256 || arch >= 90, "FlashAttention headdim > 256 is only supported on Hopper (SM90)");
     STD_TORCH_CHECK(num_heads % num_heads_k == 0, "Number of heads in key/value must divide number of heads in query");
