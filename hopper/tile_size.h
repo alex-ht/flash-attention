@@ -35,8 +35,11 @@ constexpr std::tuple<int, int, bool, bool> tile_size_fwd_sm90(
             // 128 x 192 hits the limit of smem if MmaPV_is_RS, 128 x 144 hits the limit if !MmaPV_is_RS
         } else if (headdim <= 192) {
             return {128, paged_kv_non_TMA || is_local ? 96 : (headdim_v <= 128 ? 128 : 112), true, true};  // 128 x 112 hits the limit of smem
-        } else {
+        } else if (headdim <= 256) {
             return {128, is_local ? 64 : 80, true, true};  // 128 x 80 hits the limit of smem
+        } else {
+            // headdim <= 512 (e.g. Gemma 4 global attention): small tiles to fit in smem
+            return {32, 32, false, false};
         }
     } else {
         if (headdim <= 64) {
@@ -47,8 +50,10 @@ constexpr std::tuple<int, int, bool, bool> tile_size_fwd_sm90(
             return {128, paged_kv_non_TMA ? 160 : (v_colmajor || (softcap && is_local) ? 192 : 224), true, true};
         } else if (headdim <= 192) {
             return {128, (paged_kv_non_TMA || softcap) && is_local ? 128 : 160, true, true};
-        } else {
+        } else if (headdim <= 256) {
             return {128, is_local ? 64 : 128, true, !paged_kv_non_TMA};  // PagedKV uses more registers so we disabled IntraWGOverlap
+        } else {
+            return {32, 32, false, false};
         }
     }
 }

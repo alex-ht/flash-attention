@@ -291,6 +291,13 @@ void run_mha_fwd_constexpr(Flash_fwd_params &params, cudaStream_t stream) {
             #ifndef FLASHATTENTION_DISABLE_HDIM256
             if (params.d <= 256) { return run_mha_fwd_<Arch, cutlass::bfloat16_t, 256, 256, Split, PagedKVNonTMA, Has_softcap, PackGQA>(params, stream); }
             #endif
+            #ifndef FLASHATTENTION_DISABLE_HDIM512
+            if (params.d <= 512) {
+                if constexpr (Arch == 90) {
+                    return run_mha_fwd_<Arch, cutlass::bfloat16_t, 512, 512, Split, PagedKVNonTMA, Has_softcap, PackGQA>(params, stream);
+                }
+            }
+            #endif
         } else {
             #ifndef FLASHATTENTION_DISABLE_FP16
             #ifndef FLASHATTENTION_DISABLE_HDIM64
@@ -327,6 +334,13 @@ void run_mha_fwd_constexpr(Flash_fwd_params &params, cudaStream_t stream) {
             #endif
             #ifndef FLASHATTENTION_DISABLE_HDIM256
             if (params.d <= 256) { return run_mha_fwd_<Arch, cutlass::half_t, 256, 256, Split, PagedKVNonTMA, Has_softcap, PackGQA>(params, stream); }
+            #endif
+            #ifndef FLASHATTENTION_DISABLE_HDIM512
+            if (params.d <= 512) {
+                if constexpr (Arch == 90) {
+                    return run_mha_fwd_<Arch, cutlass::half_t, 512, 512, Split, PagedKVNonTMA, Has_softcap, PackGQA>(params, stream);
+                }
+            }
             #endif
             #else
             TORCH_CHECK(false, "This flash attention build does not support FP16.");
@@ -471,6 +485,9 @@ inline int get_num_splits(Flash_fwd_params const& params) {
 }
 
 inline int get_max_headdim() {
+    #ifndef FLASHATTENTION_DISABLE_HDIM512
+    return 512;
+    #endif
     #ifndef FLASHATTENTION_DISABLE_HDIM256
     return 256;
     #endif
@@ -504,6 +521,9 @@ inline int round_up_headdim(int head_size) {
     #endif
     #ifndef FLASHATTENTION_DISABLE_HDIM256
     if (head_size <= 256) { return 256; }
+    #endif
+    #ifndef FLASHATTENTION_DISABLE_HDIM512
+    if (head_size <= 512) { return 512; }
     #endif
     return 256;
 }
@@ -778,6 +798,8 @@ mha_fwd(at::Tensor q,   // (b, s_q, h, d) or (total_q, h, d) if there is cu_seql
     }
     int const max_headdim = get_max_headdim();
     TORCH_CHECK(head_size <= max_headdim, "FlashAttention forward only supports head dimension at most " + std::to_string(max_headdim));
+    int const arch = dprops->major * 10 + dprops->minor;
+    TORCH_CHECK(head_size <= 256 || arch >= 90, "FlashAttention headdim > 256 is only supported on Hopper (SM90)");
     TORCH_CHECK(num_heads % num_heads_k == 0, "Number of heads in key/value must divide number of heads in query");
     if (head_size_v != head_size) {
         TORCH_CHECK((head_size > 128 && head_size <= 192 && head_size_v > 96 && head_size_v <= 128) ||
@@ -1221,6 +1243,13 @@ void run_mha_bwd_constexpr(Flash_bwd_params &params, cudaStream_t stream) {
         #ifndef FLASHATTENTION_DISABLE_HDIM256
         if (params.d_rounded == 256) { return run_mha_bwd_<Arch, cutlass::half_t, 256, Has_softcap>(params, stream); }
         #endif
+        #ifndef FLASHATTENTION_DISABLE_HDIM512
+        if (params.d_rounded == 512) {
+            if constexpr (Arch == 90) {
+                return run_mha_bwd_<Arch, cutlass::half_t, 512, Has_softcap>(params, stream);
+            }
+        }
+        #endif
         #else
         TORCH_CHECK(false, "This flash attention build does not support FP16.");
         #endif
@@ -1239,6 +1268,13 @@ void run_mha_bwd_constexpr(Flash_bwd_params &params, cudaStream_t stream) {
         #endif
         #ifndef FLASHATTENTION_DISABLE_HDIM256
         if (params.d_rounded == 256) { return run_mha_bwd_<Arch, cutlass::bfloat16_t, 256, Has_softcap>(params, stream); }
+        #endif
+        #ifndef FLASHATTENTION_DISABLE_HDIM512
+        if (params.d_rounded == 512) {
+            if constexpr (Arch == 90) {
+                return run_mha_bwd_<Arch, cutlass::bfloat16_t, 512, Has_softcap>(params, stream);
+            }
+        }
         #endif
     }
 }
@@ -1350,6 +1386,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> mha_bwd(
     TORCH_CHECK(head_size_v % 8 == 0, "head_size_v should be a multiple of 8");
     int const max_headdim = get_max_headdim();
     TORCH_CHECK(std::max(head_size, head_size_v) <= max_headdim, "FlashAttention forward only supports head dimension at most " + std::to_string(max_headdim));
+    int const arch = at::cuda::getCurrentDeviceProperties()->major * 10 + at::cuda::getCurrentDeviceProperties()->minor;
+    TORCH_CHECK(std::max(head_size, head_size_v) <= 256 || arch >= 90, "FlashAttention headdim > 256 is only supported on Hopper (SM90)");
     TORCH_CHECK(num_heads % num_heads_k == 0, "Number of heads in key/value must divide number of heads in query");
     double softmax_scale = 1.0 / sqrt(double(head_size));
     if (softmax_scale_.has_value()) {
@@ -1363,23 +1401,21 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> mha_bwd(
     // There's a case where is_causal=false, window_size=(-1, 0). Then set_params_bprop will set params.is_causal=true.
     // If we don't have is_causal here matching params.is_causal, we might get the wrong kBlockM (and cause IMA).
     is_causal = window_size_left < 0 && window_size_right == 0;
-
-    int const arch = at::cuda::getCurrentDeviceProperties()->major * 10 + at::cuda::getCurrentDeviceProperties()->minor;
     int const head_size_rounded = round_up_headdim(std::max(head_size, head_size_v));
     int const head_size_v_rounded = head_size_rounded;
-    TORCH_CHECK(!deterministic || head_size_rounded < 256, "Deterministic backward not supported for hdim 256.");
+    TORCH_CHECK(!deterministic || head_size_rounded < 256, "Deterministic backward not supported for hdim >= 256.");
     // Very important that these match the kernel configs
     bool const is_local = (window_size_left >= 0 || window_size_right >= 0) && !is_causal;
     int const kBlockM_sm90 = head_size_rounded <= 64 ? (is_causal && softcap > 0.0 ? 96 : 128)
         : (head_size_rounded <= 96 ? 64
            : (head_size_rounded <= 128 ? (is_causal || is_local || softcap > 0.0 ? 64 : 80)
-              : 64));
+              : (head_size_rounded <= 256 ? 64 : 32)));
     int const kBlockM_sm80 = head_size_rounded <= 64 ? 128 : 64;
     int const kBlockM_sm86 = head_size_rounded <= 192 ? 64 : 32;
     int const kBlockM = arch >= 90 ? kBlockM_sm90 : (arch == 86 || arch == 89 ? kBlockM_sm86 : kBlockM_sm80);
     int const kBlockN_sm90 = head_size_rounded <= 128
         ? 128
-        : (head_size_rounded <= 192 ? 96 : 80);
+        : (head_size_rounded <= 192 ? 96 : (head_size_rounded <= 256 ? 80 : 32));
     int const kBlockN_sm80 = head_size_rounded <= 128
         ? 128
         : (head_size_rounded <= 192 ? 80 : 64);

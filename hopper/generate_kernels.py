@@ -29,7 +29,7 @@ DTYPE_MAP_BWD = {
 }
 
 SM = [80, 90]  # Sm kernels support up to
-HEAD_DIMENSIONS = [64, 96, 128, 192, 256]
+HEAD_DIMENSIONS = [64, 96, 128, 192, 256, 512]
 PAGEDKV = [False, True]
 SPLIT = [False, True]
 SOFTCAP = [False, True]
@@ -130,6 +130,9 @@ class Kernel:
 
 def get_all_kernels() -> List[Kernel]:
     for dtype, head_dim, split, paged_kv, softcap, packgqa, sm in itertools.product(DTYPE_MAP.keys(), HEAD_DIMENSIONS, SPLIT, PAGEDKV, SOFTCAP, PACKGQA, SM):
+        # headdim=512 only supported on SM90 with fp16/bf16
+        if head_dim == 512 and (sm < 90 or dtype == "e4m3"):
+            continue
         # We always enable PackGQA for Sm8x or PagedKV or Split
          # so we should just pass in packgqa=False to avoid the `_packgqa` in the filename.
         if packgqa and (sm < 90 or (sm >= 90 and (paged_kv or split))):
@@ -142,6 +145,9 @@ def get_all_kernels() -> List[Kernel]:
             yield Kernel(sm=sm, dtype=dtype, head_dim=head_dim, head_dim_v=256, split=split, paged_kv=paged_kv, softcap=softcap, packgqa=packgqa, direction="fwd")
             yield Kernel(sm=sm, dtype=dtype, head_dim=head_dim, head_dim_v=512, split=split, paged_kv=paged_kv, softcap=softcap, packgqa=packgqa, direction="fwd")
     for dtype, head_dim, softcap, sm in itertools.product(DTYPE_MAP_BWD.keys(), HEAD_DIMENSIONS, SOFTCAP, SM):
+        # headdim=512 backward only supported on SM90
+        if head_dim == 512 and sm < 90:
+            continue
         yield Kernel(sm=sm, dtype=dtype, head_dim=head_dim, head_dim_v=head_dim, split=False, paged_kv=False, softcap=softcap, packgqa=False, direction="bwd")
 
 

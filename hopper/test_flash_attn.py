@@ -43,6 +43,7 @@ DISABLE_HDIM96 = os.getenv("FLASH_ATTENTION_DISABLE_HDIM96", "FALSE") == "TRUE"
 DISABLE_HDIM128 = os.getenv("FLASH_ATTENTION_DISABLE_HDIM128", "FALSE") == "TRUE"
 DISABLE_HDIM192 = os.getenv("FLASH_ATTENTION_DISABLE_HDIM192", "FALSE") == "TRUE"
 DISABLE_HDIM256 = os.getenv("FLASH_ATTENTION_DISABLE_HDIM256", "FALSE") == "TRUE"
+DISABLE_HDIM512 = os.getenv("FLASH_ATTENTION_DISABLE_HDIM512", "FALSE") == "TRUE"
 ENABLE_OPCHECK = os.getenv("FLASH_ATTENTION_ENABLE_OPCHECK", "FALSE") == "TRUE"
 ENABLE_AUTOGRAD_CHECK = os.getenv("FLASH_ATTENTION_ENABLE_AUTOGRAD_CHECK", "FALSE") == "TRUE"
 
@@ -53,6 +54,7 @@ COMPILED_HDIMS = (
     + ([128] if not DISABLE_HDIM128 else [])
     + ([192] if not DISABLE_HDIM192 else [])
     + ([256] if not DISABLE_HDIM256 else [])
+    + ([512] if not DISABLE_HDIM512 else [])
 )
 
 def should_test_backward(args, kwargs):
@@ -171,6 +173,8 @@ def test_flash_attn_output(
         pytest.skip("V_colmajor requires seqlen_k to be a multiple of 16 and dtype to be float8_e4m3fn")
     if has_qv and (d != 64 or dtype == torch.float8_e4m3fn):
         pytest.skip("Has Qv requires hdim 64 and dtype to be float16 or bfloat16 (not float8_e4m3fn)")
+    if d > 256 and dtype == torch.float8_e4m3fn:
+        pytest.skip("FP8 not supported for hdim > 256")
     device = "cuda"
     # set seed
     torch.random.manual_seed(0)
