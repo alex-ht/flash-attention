@@ -99,7 +99,7 @@ pip install -q ninja einops 2>/dev/null || pip install "${pip_flags[@]}" ninja e
 
 case "$BUILD_MODE" in
   --full)
-    run_pip install -e . "${pip_flags[@]}"
+    run_pip -e . "${pip_flags[@]}"
     ;;
   --hdim512-only)
     export FLASH_ATTENTION_DISABLE_HDIM64=1
@@ -112,7 +112,7 @@ case "$BUILD_MODE" in
     export FLASH_ATTENTION_DISABLE_HDIMDIFF192=1
     export FLASH_ATTENTION_DISABLE_FP8=1
     rm -rf build *.egg-info
-    run_pip install -e . "${pip_flags[@]}"
+    run_pip -e . "${pip_flags[@]}"
     ;;
   -h|--help)
     sed -n '2,15p' "$0"
