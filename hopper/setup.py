@@ -558,6 +558,8 @@ if not SKIP_CUDA_BUILD:
     # build will now explode with this compilation grouping given all our templating
     # HEAD_DIMENSIONS_FWD = ["all", "diff"]
     HEAD_DIMENSIONS_FWD = HEAD_DIMENSIONS_BWD
+    # hdim=512 is SM90-only (bf16/fp16); see generate_kernels.py
+    HEAD_DIMENSIONS_SM80 = [h for h in HEAD_DIMENSIONS_BWD if h != 512]
     HEAD_DIMENSIONS_DIFF64_FWD = (
         []
         + (["64_256"] if not DISABLE_HDIMDIFF64 else [])
@@ -567,7 +569,7 @@ if not SKIP_CUDA_BUILD:
         []
         + (["192_128"] if not DISABLE_HDIMDIFF192 else [])
     )
-    HEAD_DIMENSIONS_FWD_SM80 = HEAD_DIMENSIONS_BWD
+    HEAD_DIMENSIONS_FWD_SM80 = HEAD_DIMENSIONS_SM80
     SPLIT = [""] + (["_split"] if not DISABLE_SPLIT else [])
     PAGEDKV = [""] + (["_paged"] if not DISABLE_PAGEDKV else [])
     SOFTCAP = [""] + (["_softcap"] if not DISABLE_SOFTCAP else [])
@@ -579,7 +581,8 @@ if not SKIP_CUDA_BUILD:
     # We already always hard-code PackGQA=true for Sm9x if PagedKV or Split
     sources_fwd_sm90 = [f"instantiations/flash_fwd_hdim{hdim}_{dtype}{paged}{split}{softcap}{packgqa}_sm90.cu"
                         for hdim, dtype, split, paged, softcap, packgqa in itertools.product(HEAD_DIMENSIONS_FWD, DTYPE_FWD_SM90, SPLIT, PAGEDKV, SOFTCAP, PACKGQA)
-                        if not (packgqa and (paged or split))]
+                        if not (packgqa and (paged or split))
+                        and not (hdim == 512 and dtype == "e4m3")]
     if not DISABLE_HDIMDIFF64:
         sources_fwd_sm90 += [f"instantiations/flash_fwd_hdim{hdim}_{dtype}{paged}{split}{softcap}{packgqa}_sm90.cu"
                              for hdim, dtype, split, paged, softcap, packgqa in itertools.product(HEAD_DIMENSIONS_DIFF64_FWD, HALF_DTYPE_FWD_SM90, SPLIT, PAGEDKV, SOFTCAP, PACKGQA)
@@ -589,7 +592,7 @@ if not SKIP_CUDA_BUILD:
                             for hdim, dtype, split, paged, softcap, packgqa in itertools.product(HEAD_DIMENSIONS_DIFF192_FWD, DTYPE_FWD_SM90, SPLIT, PAGEDKV, SOFTCAP, PACKGQA)
                             if not (packgqa and (paged or split))]
     sources_bwd_sm80 = [f"instantiations/flash_bwd_hdim{hdim}_{dtype}{softcap}_sm80.cu"
-                        for hdim, dtype, softcap in itertools.product(HEAD_DIMENSIONS_BWD, DTYPE_BWD, SOFTCAP)]
+                        for hdim, dtype, softcap in itertools.product(HEAD_DIMENSIONS_SM80, DTYPE_BWD, SOFTCAP)]
     sources_bwd_sm90 = [f"instantiations/flash_bwd_hdim{hdim}_{dtype}{softcap}_sm90.cu"
                         for hdim, dtype, softcap in itertools.product(HEAD_DIMENSIONS_BWD, DTYPE_BWD, SOFTCAP_ALL)]
     if DISABLE_BACKWARD:
