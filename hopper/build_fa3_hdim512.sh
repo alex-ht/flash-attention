@@ -3,7 +3,8 @@
 # GPU is not required; compilation uses CPU + nvcc only.
 #
 # Usage:
-#   ./build_fa3_hdim512.sh              # fast build: only hdim=512 kernels
+#   ./build_fa3_hdim512.sh              # quiet build (log -> build_fa3.log)
+#   ./build_fa3_hdim512.sh --verbose    # show full compiler output
 #   ./build_fa3_hdim512.sh --full       # full FA3 hopper build (all head dims)
 #
 # Override parallelism (112-core machine example):
@@ -19,22 +20,51 @@ export MAX_JOBS="${MAX_JOBS:-48}"
 export NVCC_THREADS="${NVCC_THREADS:-4}"
 export FLASH_ATTENTION_FORCE_BUILD="${FLASH_ATTENTION_FORCE_BUILD:-1}"
 
-BUILD_MODE="${1:---hdim512-only}"
+# Quiet by default; set VERBOSE=1 or pass --verbose to see everything
+VERBOSE="${VERBOSE:-0}"
+BUILD_MODE="--hdim512-only"
+LOG_FILE="${LOG_FILE:-$SCRIPT_DIR/build_fa3.log}"
 
-echo "==> FA3 hopper build"
-echo "    MAX_JOBS=$MAX_JOBS  NVCC_THREADS=$NVCC_THREADS"
-echo "    mode=$BUILD_MODE"
-echo ""
+for arg in "$@"; do
+  case "$arg" in
+    --verbose|-v) VERBOSE=1 ;;
+    --full|--hdim512-only|-h|--help) BUILD_MODE="$arg" ;;
+    *) echo "Unknown option: $arg" >&2; exit 1 ;;
+  esac
+done
 
-pip install -q ninja einops
+# Reduce pip noise (deprecation / version notices)
+export PIP_DISABLE_PIP_VERSION_CHECK=1
+export PIP_ROOT_USER_ACTION=ignore
+export PYTHONWARNINGS="${PYTHONWARNINGS:-ignore::DeprecationWarning}"
+
+pip_flags=(--no-build-isolation)
+[[ "$VERBOSE" == 0 ]] && pip_flags+=(-q)
+
+run_pip() {
+  if [[ "$VERBOSE" == 1 ]]; then
+    pip install "$@"
+  else
+    echo "==> $*"
+    echo "    (logging to $LOG_FILE)"
+    if ! pip install "$@" >"$LOG_FILE" 2>&1; then
+      echo "==> FAILED. Last 50 lines of $LOG_FILE:"
+      tail -50 "$LOG_FILE"
+      exit 1
+    fi
+  fi
+}
+
+echo "==> FA3 hopper build  MAX_JOBS=$MAX_JOBS  NVCC_THREADS=$NVCC_THREADS  mode=$BUILD_MODE"
+[[ "$VERBOSE" == 0 ]] && echo "    quiet mode (use --verbose for full output)"
+
+pip install -q ninja einops 2>/dev/null || pip install "${pip_flags[@]}" ninja einops
 
 case "$BUILD_MODE" in
   --full)
-    echo "==> Full hopper build (all head dimensions; slow)"
-    pip install -e . --no-build-isolation
+    run_pip install -e . "${pip_flags[@]}"
     ;;
-  --hdim512-only|"")
-    echo "==> Minimal build (hdim=512 SM90 only)"
+  --hdim512-only)
     export FLASH_ATTENTION_DISABLE_HDIM64=1
     export FLASH_ATTENTION_DISABLE_HDIM96=1
     export FLASH_ATTENTION_DISABLE_HDIM128=1
@@ -45,20 +75,14 @@ case "$BUILD_MODE" in
     export FLASH_ATTENTION_DISABLE_HDIMDIFF192=1
     export FLASH_ATTENTION_DISABLE_FP8=1
     rm -rf build *.egg-info
-    pip install -e . --no-build-isolation
+    run_pip install -e . "${pip_flags[@]}"
     ;;
   -h|--help)
-    sed -n '2,11p' "$0"
+    sed -n '2,12p' "$0"
     exit 0
-    ;;
-  *)
-    echo "Unknown option: $BUILD_MODE" >&2
-    echo "Use --hdim512-only (default) or --full" >&2
-    exit 1
     ;;
 esac
 
-echo ""
-echo "==> Done. Run tests on an H100/H800 (SM90):"
-echo "    export PYTHONPATH=$SCRIPT_DIR"
-echo "    pytest test_flash_attn.py -k '512 and gqa' -x --tb=short"
+echo "==> Done."
+[[ "$VERBOSE" == 0 ]] && echo "    full log: $LOG_FILE"
+echo "    test on H100/H800: PYTHONPATH=$SCRIPT_DIR pytest test_flash_attn.py -k '512 and gqa' -x"
