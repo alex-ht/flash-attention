@@ -235,7 +235,8 @@ public:
             pipeline_params_vt.transaction_bytes = CollectiveMainloop::TmaTransactionBytesV;
             if constexpr (LargeHeadDimV) { pipeline_params_vt.num_consumers = NumMmaThreads; }
         } else {
-            if constexpr (LargeHeadDimV) { pipeline_params_vt.consumer_arv_count = NumMmaThreads; }
+            // SameHeadDim + LargeHeadDimV (e.g. hdim512): pipeline_params_vt already has TMA fields from pipeline_params_k
+            if constexpr (!Use_TMA_KV && LargeHeadDimV) { pipeline_params_vt.consumer_arv_count = NumMmaThreads; }
         }
 
         MainloopPipelineK pipeline_k = [&] {
