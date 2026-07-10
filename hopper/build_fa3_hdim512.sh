@@ -122,4 +122,4 @@ esac
 
 echo "==> Done."
 [[ "$VERBOSE" == 0 ]] && echo "    log: $LOG_FILE"
-echo "    test on H100/H800: PYTHONPATH=$SCRIPT_DIR pytest test_flash_attn.py -k '512 and gqa' -x"
+echo "    smoke test (H100/H800): PYTHONPATH=$SCRIPT_DIR pytest test_flash_attn.py::test_flash_attn_output -k '256-256-512-False-False-0.0-False-False-False-gqa' -x -v"
